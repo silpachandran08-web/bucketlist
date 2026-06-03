@@ -282,7 +282,7 @@ export default function Dashboard() {
               className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-600 hover:bg-amber-100 transition-colors"
             >
               <RefreshCw size={11} className={rateLoading ? 'animate-spin' : ''} />
-              <span>1 INR = {sarRate.toFixed(4)} SAR</span>
+              <span>1 SAR = {(1 / sarRate).toFixed(2)} INR</span>
             </button>
 
             <button
