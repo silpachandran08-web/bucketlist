@@ -74,12 +74,10 @@ const defaultForm = {
 
 function formatCurrency(n: number, currency: Currency, rate: number) {
   const amount = currency === 'SAR' ? n * rate : n
-  const locale = currency === 'SAR' ? 'ar-SA' : 'en-IN'
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
+  const symbol = currency === 'SAR' ? 'SAR ' : '₹'
+  return symbol + new Intl.NumberFormat('en-IN', {
     maximumFractionDigits: 0,
-  }).format(amount)
+  }).format(Math.round(amount))
 }
 
 export default function Dashboard() {
