@@ -3,11 +3,21 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  PlusCircle, LogOut, Heart, TrendingUp, Target, Wallet,
+  PlusCircle, LogOut, Heart, TrendingUp, Target,
   Plane, ShoppingBag, Star, Utensils, Edit2, Trash2, X,
-  Check, ChevronDown, DollarSign, Calendar, MapPin, Sparkles,
-  Trophy, PiggyBank, ArrowUpCircle
+  Check, ChevronDown, Calendar, MapPin, Sparkles,
+  Trophy, PiggyBank, ArrowUpCircle, RefreshCw
 } from 'lucide-react'
+
+type Currency = 'INR' | 'SAR'
+
+const CURRENCY_CONFIG: Record<Currency, { symbol: string; flag: string; label: string }> = {
+  INR: { symbol: '₹', flag: '🇮🇳', label: 'Indian Rupee' },
+  SAR: { symbol: '﷼', flag: '🇸🇦', label: 'Saudi Riyal' },
+}
+
+// Free API — no key needed
+const EXCHANGE_API = 'https://open.er-api.com/v6/latest/INR'
 
 type Category = 'travel' | 'shopping' | 'experiences' | 'food'
 type Status = 'dream' | 'planned' | 'saving' | 'done'
@@ -62,8 +72,14 @@ const defaultForm = {
   priority: 'medium' as Priority, emoji: '✈️', location: '', targetDate: '',
 }
 
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
+function formatCurrency(n: number, currency: Currency, rate: number) {
+  const amount = currency === 'SAR' ? n * rate : n
+  const locale = currency === 'SAR' ? 'ar-SA' : 'en-IN'
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount)
 }
 
 export default function Dashboard() {
@@ -81,6 +97,28 @@ export default function Dashboard() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [currency, setCurrency] = useState<Currency>('INR')
+  const [sarRate, setSarRate] = useState<number>(0.044) // fallback: 1 INR ≈ 0.044 SAR
+  const [rateUpdated, setRateUpdated] = useState<string>('')
+  const [rateLoading, setRateLoading] = useState(false)
+
+  const fetchExchangeRate = useCallback(async () => {
+    setRateLoading(true)
+    try {
+      const res = await fetch(EXCHANGE_API)
+      const data = await res.json()
+      if (data?.rates?.SAR) {
+        setSarRate(data.rates.SAR)
+        setRateUpdated(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }))
+      }
+    } catch {
+      // keep fallback rate
+    } finally {
+      setRateLoading(false)
+    }
+  }, [])
+
+  const fmt = useCallback((n: number) => formatCurrency(n, currency, sarRate), [currency, sarRate])
 
   const fetchAll = useCallback(async () => {
     try {
@@ -103,7 +141,7 @@ export default function Dashboard() {
     }
   }, [router])
 
-  useEffect(() => { fetchAll() }, [fetchAll])
+  useEffect(() => { fetchAll(); fetchExchangeRate() }, [fetchAll, fetchExchangeRate])
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -221,6 +259,34 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Currency switcher */}
+            <div className="flex items-center bg-teal-50 border border-teal-100 rounded-xl p-1 gap-1">
+              {(['INR', 'SAR'] as Currency[]).map(c => (
+                <button
+                  key={c}
+                  onClick={() => setCurrency(c)}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    currency === c
+                      ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-sm'
+                      : 'text-gray-400 hover:text-teal-600'
+                  }`}
+                >
+                  <span>{CURRENCY_CONFIG[c].flag}</span>
+                  <span>{c}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Live rate badge */}
+            <button
+              onClick={fetchExchangeRate}
+              title="Refresh exchange rate"
+              className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-600 hover:bg-amber-100 transition-colors"
+            >
+              <RefreshCw size={11} className={rateLoading ? 'animate-spin' : ''} />
+              <span>1 INR = {sarRate.toFixed(4)} SAR</span>
+            </button>
+
             <button
               onClick={openAdd}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-sm font-semibold shadow-md hover:shadow-teal-200 hover:scale-105 active:scale-95 transition-all"
@@ -252,7 +318,7 @@ export default function Dashboard() {
           <StatCard
             icon={<Target className="text-teal-500" size={22} />}
             label="Total Goal"
-            value={formatCurrency(totalTarget)}
+            value={fmt(totalTarget)}
             bg="from-teal-50 to-emerald-50"
             border="border-teal-100"
           />
@@ -263,7 +329,7 @@ export default function Dashboard() {
             <StatCard
               icon={<PiggyBank className="text-emerald-500" size={22} />}
               label="Total Saved"
-              value={formatCurrency(savings.totalSaved)}
+              value={fmt(savings.totalSaved)}
               bg="from-emerald-50 to-teal-50"
               border="border-emerald-100"
               clickable
@@ -284,7 +350,7 @@ export default function Dashboard() {
             <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
               <Sparkles size={15} className="text-amber-400" /> Overall Savings Progress
             </span>
-            <span className="text-xs text-teal-600 font-medium">{formatCurrency(savings.totalSaved)} / {formatCurrency(totalTarget)}</span>
+            <span className="text-xs text-teal-600 font-medium">{fmt(savings.totalSaved)} / {fmt(totalTarget)}</span>
           </div>
           <div className="h-4 bg-teal-50 rounded-full overflow-hidden">
             <div
@@ -294,7 +360,7 @@ export default function Dashboard() {
           </div>
           {savings.monthlyTarget > 0 && (
             <p className="text-xs text-teal-500 mt-2 flex items-center gap-1">
-              <ArrowUpCircle size={12} /> Monthly savings target: {formatCurrency(savings.monthlyTarget)}
+              <ArrowUpCircle size={12} /> Monthly savings target: {fmt(savings.monthlyTarget)}
             </p>
           )}
         </div>
@@ -352,6 +418,7 @@ export default function Dashboard() {
                 onEdit={() => openEdit(item)}
                 onDelete={() => handleDelete(item.id)}
                 deleting={deleting === item.id}
+                fmt={fmt}
               />
             ))}
           </div>
@@ -492,7 +559,7 @@ export default function Dashboard() {
           <form onSubmit={handleSavingsUpdate} className="space-y-4">
             <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-4 text-center border border-emerald-100">
               <p className="text-sm text-teal-600 mb-1">Current Savings</p>
-              <p className="text-3xl font-bold gradient-text">{formatCurrency(savings.totalSaved)}</p>
+              <p className="text-3xl font-bold gradient-text">{fmt(savings.totalSaved)}</p>
             </div>
 
             <FormInput label="➕ Add to Savings (₹)">
@@ -578,8 +645,8 @@ function TabBtn({ active, onClick, label, count }: { active: boolean; onClick: (
   )
 }
 
-function ItemCard({ item, onEdit, onDelete, deleting }: {
-  item: BucketItem; onEdit: () => void; onDelete: () => void; deleting: boolean
+function ItemCard({ item, onEdit, onDelete, deleting, fmt }: {
+  item: BucketItem; onEdit: () => void; onDelete: () => void; deleting: boolean; fmt: (n: number) => string
 }) {
   const cat = CATEGORIES.find(c => c.key === item.category)!
   const status = STATUS_CONFIG[item.status]
@@ -642,8 +709,8 @@ function ItemCard({ item, onEdit, onDelete, deleting }: {
       {item.targetAmount > 0 && (
         <div className="mb-4">
           <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>₹{item.savedAmount.toLocaleString('en-IN')} saved</span>
-            <span>₹{item.targetAmount.toLocaleString('en-IN')} goal</span>
+            <span>{fmt(item.savedAmount)} saved</span>
+            <span>{fmt(item.targetAmount)} goal</span>
           </div>
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
